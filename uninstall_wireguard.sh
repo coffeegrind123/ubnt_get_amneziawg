@@ -58,8 +58,10 @@ function add_to_path() {
 }
 
 if [ "$(id -g -n)" != 'vyattacfg' ] ; then
-  die "Unable to continue running script without 'vyattacfg' group permission."
+    echo switching group to vyattacfg...
+    exec sg vyattacfg -c "$(which bash) -$- $(readlink -f $0) $*"
 fi
+
 [[ $EUID -ne 0 ]] && SUDO='sudo'
 add_to_path /sbin /usr/sbin
 
@@ -72,6 +74,9 @@ VYATTA_COMMIT=${VYATTA_SBIN}/my_commit
 VYATTA_SESSION=$(cli-shell-api getSessionEnv $$)
 eval $VYATTA_SESSION
 export vyatta_sbindir=$VYATTA_SBIN
+
+# Get installed WireGuard version
+INSTALLED_VERSION=$(dpkg-query --show --showformat='${Version}' wireguard 2> /dev/null || true)
 
 # If WireGuard configuration exists
 if $($VYATTA_API existsActive interfaces wireguard); then

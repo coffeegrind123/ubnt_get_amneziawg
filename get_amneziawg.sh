@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 ###############################################################################
-#         File:  get_wireguard.sh                                             #
+#         File:  get_amneziawg.sh                                             #
 #                                                                             #
-#        Usage:  get_wireguard.sh [VERSION]                                   #
+#        Usage:  get_amneziawg.sh [VERSION]                                   #
 #                                                                             #
-#  Description:  Download and install WireGuard on Ubiquiti routers that will #
-#                persist through firmware upgrades. If WireGuard is already   #
-#                installed, the WireGuard configuration will be backed up and #
-#                removed, WireGuard will be updated to the selected version,  #
-#                the backed up WireGuard configuration will be restored, and  #
-#                the WireGuard installation package will be stored so that it #
+#  Description:  Download and install AmneziaWG on Ubiquiti routers that will #
+#                persist through firmware upgrades. If AmneziaWG is already   #
+#                installed, the AmneziaWG configuration will be backed up and #
+#                removed, AmneziaWG will be updated to the selected version,  #
+#                the backed up AmneziaWG configuration will be restored, and  #
+#                the AmneziaWG installation package will be stored so that it #
 #                will be reinstall after firmware upgrades.                   #
 #                                                                             #
 #   Parameters:  VERSION                                                      #
 #                    Install version that has been published to GitHub        #
-#                    WireGuard/wireguard-vyatta-ubnt releases. When version   #
-#                    is omitted, the latest release is selected.              #
+#                    coffeegrind123/amneziawg-vyatta-ubnt releases.           #
+#                    When version is omitted, the latest release is selected. #
 #                                                                             #
-#        Notes:  Ensure you have a recent backup of the WireGuard             #
+#        Notes:  Ensure you have a recent backup of the AmneziaWG             #
 #                configuration before running this script.                    #
 #       Author:  whiskerz007                                                  #
-#      Website:  https://github.com/whiskerz007/ubnt_get_wireguard            #
+#      Website:  https://github.com/coffeegrind123/ubnt_get_amneziawg         #
 #      License:  MIT                                                          #
 ###############################################################################
 
@@ -143,13 +143,13 @@ FIRMWARE=$(
 )
 info "Firmware version: $FIRMWARE"
 
-# Get installed WireGuard version
+# Get installed AmneziaWG version
 INSTALLED_VERSION=$(dpkg-query --show --showformat='${Version}' wireguard 2> /dev/null || true)
-info "Installed WireGuard version: $INSTALLED_VERSION"
+info "Installed AmneziaWG version: $INSTALLED_VERSION"
 
 # Get list of releases
 GITHUB_API='https://api.github.com'
-GITHUB_REPO='WireGuard/wireguard-vyatta-ubnt'
+GITHUB_REPO='coffeegrind123/amneziawg-vyatta-ubnt'
 GITHUB_RELEASES_URL="${GITHUB_API}/repos/${GITHUB_REPO}/releases"
 GITHUB_RELEASES=$(curl --silent $GITHUB_RELEASES_URL)
 
@@ -180,13 +180,13 @@ DEB_URL=$(jq -r "[$QUERY .assets[] | select(.name | contains(\"$BOARD_MAP-\")) $
 info "Debian package URL: $DEB_URL"
 
 # Download the package
-msg 'Downloading WireGuard package...'
+msg 'Downloading AmneziaWG package...'
 DEB_PATH=${TEMP_DIR}/$(basename $DEB_URL)
 curl --silent --location $DEB_URL -o $DEB_PATH || \
   die "Failure downloading debian package."
 
 # Check package integrity
-msg 'Checking WireGuard package integrity...'
+msg 'Checking AmneziaWG package integrity...'
 dpkg-deb --info $DEB_PATH &> /dev/null || \
   die "Debian package integrity check failed for package."
 
@@ -200,13 +200,13 @@ VYATTA_SESSION=$(cli-shell-api getSessionEnv $$)
 eval $VYATTA_SESSION
 export vyatta_sbindir=$VYATTA_SBIN #Required for some vyatta-wireguard templates to work
 
-# If WireGuard configuration exists
+# If AmneziaWG configuration exists
 if $($VYATTA_API existsActive interfaces wireguard); then
   # Backup running configuration
   msg 'Backing up running configuration...'
   $VYATTA_API showConfig --show-active-only > $RUNNING_CONFIG_BACKUP_PATH
 
-  # Remove running WireGuard configuration
+  # Remove running AmneziaWG configuration
   vyatta_cfg_setup
   if dpkg --compare-versions "$INSTALLED_VERSION" 'le' '1.0.20210219-1'; then
     msg 'Executing configuration remediation...'
@@ -222,26 +222,26 @@ if $($VYATTA_API existsActive interfaces wireguard); then
       done
     done
   fi
-  msg 'Removing running WireGuard configuration...'
+  msg 'Removing running AmneziaWG configuration...'
   $VYATTA_DELETE interfaces wireguard
   $VYATTA_COMMIT
   vyatta_cfg_teardown
 fi
 
-# If WireGuard module is loaded
+# If AmneziaWG module is loaded
 if $(lsmod | grep wireguard > /dev/null); then
-  # Remove WireGuard module
-  msg 'Removing WireGuard module...'
+  # Remove AmneziaWG module
+  msg 'Removing AmneziaWG module...'
   $SUDO modprobe --remove wireguard || \
-    die "A problem occured while removing WireGuard mdoule."
+    die "A problem occured while removing AmneziaWG mdoule."
 fi
 
-# Install WireGuard package
-msg 'Installing WireGuard...'
+# Install AmneziaWG package
+msg 'Installing AmneziaWG...'
 $SUDO dpkg -i $DEB_PATH &> /dev/null || \
   die "A problem occured while installing the package."
 
-# If WireGuard was previously configured
+# If AmneziaWG was previously configured
 if [ -f $RUNNING_CONFIG_BACKUP_PATH ]; then
   # Load backup configuration
   msg 'Restoring previous running configuration...'
@@ -252,7 +252,7 @@ if [ -f $RUNNING_CONFIG_BACKUP_PATH ]; then
 fi
 
 # Move package to firstboot path to automatically install package after firmware update
-msg 'Enabling WireGuard installation after firmware update...'
+msg 'Enabling AmneziaWG installation after firmware update...'
 FIRSTBOOT_DIR='/config/data/firstboot/install-packages'
 if [ ! -d $FIRSTBOOT_DIR ]; then
   $SUDO mkdir -p $FIRSTBOOT_DIR &> /dev/null || \
@@ -261,4 +261,4 @@ fi
 $SUDO mv $DEB_PATH ${FIRSTBOOT_DIR}/wireguard.deb || \
   warn "Failure moving debian package to firstboot path."
 
-msg 'WireGuard has been successfully installed.'
+msg 'AmneziaWG has been successfully installed.'

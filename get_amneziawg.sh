@@ -143,6 +143,15 @@ FIRMWARE=$(
 )
 info "Firmware version: $FIRMWARE"
 
+# Determine firmware major version (v1 or v2) for package selection
+FIRMWARE_MAJOR=$(cut -d'.' -f1 <<< $FIRMWARE)
+case $FIRMWARE_MAJOR in
+  1) FIRMWARE_VERSION="v1";;
+  2) FIRMWARE_VERSION="v2";;
+  *) die "Unsupported firmware major version: $FIRMWARE_MAJOR";;
+esac
+info "Firmware version category: $FIRMWARE_VERSION"
+
 # Get installed AmneziaWG version
 INSTALLED_VERSION=$(dpkg-query --show --showformat='${Version}' wireguard 2> /dev/null || true)
 info "Installed AmneziaWG version: $INSTALLED_VERSION"
@@ -159,7 +168,7 @@ if [ ! -z $OVERRIDE_VERSION ]; then
   QUERY="[.[]][] | select(.tag_name == \"$OVERRIDE_VERSION\") |"
 else
   # Get the latest release
-  QUERY="[[.[]][] | select(.prerelease == false)][0]"
+  QUERY="[[.[]][] | select(.prerelease == false)][0] |"
 fi
 
 # Get release version
@@ -173,10 +182,10 @@ if [ -z $OVERRIDE_VERSION ] && $(dpkg --compare-versions "$RELEASE_VERSION" 'le'
   exit 0
 fi
 
-# Get debian package URL
-[[ ! $BOARD_MAP = ugw* ]] && FIRMWARE_FILTER="| select(.name | contains(\"$(cut -d'.' -f1 <<< $FIRMWARE)-\"))"
-DEB_URL=$(jq -r "[$QUERY .assets[] | select(.name | contains(\"$BOARD_MAP-\")) ${FIRMWARE_FILTER:-}][0].browser_download_url" <<< $GITHUB_RELEASES)
-[ -z $DEB_URL ] && die "Failed to locate debian package for your board and firmware."
+# Get debian package URL - Updated for new naming convention with v1/v2 suffixes
+# Skip UnifiOS packages and filter by board type and firmware version
+DEB_URL=$(jq -r "$QUERY .assets[] | select(.name | contains(\"$BOARD_MAP-$FIRMWARE_VERSION-\")) | select(.name | endswith(\".deb\")) | .browser_download_url" <<< $GITHUB_RELEASES)
+[ -z "$DEB_URL" ] && die "Failed to locate debian package for board '$BOARD_MAP' with firmware version '$FIRMWARE_VERSION'."
 info "Debian package URL: $DEB_URL"
 
 # Download the package

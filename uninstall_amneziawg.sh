@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 ###############################################################################
-#         File:  uninstall_wireguard.sh                                       #
+#         File:  uninstall_amneziawg.sh                                       #
 #                                                                             #
-#        Usage:  uninstall_wireguard.sh                                       #
+#        Usage:  uninstall_amneziawg.sh                                       #
 #                                                                             #
-#  Description:  Uninstall WireGuard from Ubiquiti routers and remove         #
+#  Description:  Uninstall AmneziaWG from Ubiquiti routers and remove         #
 #                persistent package.                                          #
 #                                                                             #
 #       Author:  whiskerz007                                                  #
-#      Website:  https://github.com/whiskerz007/ubnt_get_wireguard            #
+#      Website:  https://github.com/coffeegrind123/ubnt_get_amneziawg         #
 #      License:  MIT                                                          #
 ###############################################################################
 
@@ -28,6 +28,11 @@ function error_exit() {
   local FLAG="\e[91m[ERROR] \e[93m$EXIT@$LINE"
   msg "$FLAG $REASON"
   exit $EXIT
+}
+function warn() {
+  local REASON="\e[97m$1\e[39m"
+  local FLAG="\e[93m[WARNING]\e[39m"
+  msg "$FLAG $REASON"
 }
 function msg() {
   local TEXT="$1"
@@ -75,12 +80,12 @@ VYATTA_SESSION=$(cli-shell-api getSessionEnv $$)
 eval $VYATTA_SESSION
 export vyatta_sbindir=$VYATTA_SBIN
 
-# Get installed WireGuard version
+# Get installed AmneziaWG version
 INSTALLED_VERSION=$(dpkg-query --show --showformat='${Version}' wireguard 2> /dev/null || true)
 
-# If WireGuard configuration exists
+# If AmneziaWG configuration exists
 if $($VYATTA_API existsActive interfaces wireguard); then
-  # Remove running WireGuard configuration
+  # Remove running AmneziaWG configuration
   vyatta_cfg_setup
   if dpkg --compare-versions "$INSTALLED_VERSION" 'le' '1.0.20210219-1'; then
     msg 'Executing configuration remediation...'
@@ -96,31 +101,31 @@ if $($VYATTA_API existsActive interfaces wireguard); then
       done
     done
   fi
-  msg 'Removing running WireGuard configuration...'
+  msg 'Removing running AmneziaWG configuration...'
   $VYATTA_DELETE interfaces wireguard
   $VYATTA_COMMIT
   vyatta_cfg_teardown
 fi
 
-# If WireGuard module is loaded
+# If AmneziaWG module is loaded
 if $(lsmod | grep wireguard > /dev/null); then
-  # Remove WireGuard module
-  msg 'Removing WireGuard module...'
+  # Remove AmneziaWG module
+  msg 'Removing AmneziaWG module...'
   ${SUDO-} modprobe --remove wireguard || \
-    die "A problem occured while removing WireGuard mdoule."
+    die "A problem occured while removing AmneziaWG module."
 fi
 
-# Uninstall WireGuard package
-msg 'Uninstalling WireGuard...'
+# Uninstall AmneziaWG package
+msg 'Uninstalling AmneziaWG...'
 ${SUDO-} dpkg --purge wireguard &> /dev/null || \
   die "A problem occured while uninstalling the package."
 
 # Remove firstboot package
 FIRSTBOOT_DEB='/config/data/firstboot/install-packages/wireguard.deb'
 if [ -f $FIRSTBOOT_DEB ]; then
-  msg 'Removing WireGuard package from firstboot path...'
+  msg 'Removing AmneziaWG package from firstboot path...'
   ${SUDO-} rm $FIRSTBOOT_DEB || \
     warn "Failure removing debian package from firstboot path."
 fi
 
-msg 'WireGuard has been successfully uninstalled.'
+msg 'AmneziaWG has been successfully uninstalled.'

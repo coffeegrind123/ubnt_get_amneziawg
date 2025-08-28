@@ -144,7 +144,7 @@ FIRMWARE=$(
 info "Firmware version: $FIRMWARE"
 
 # Determine firmware major version (v1 or v2) for package selection
-FIRMWARE_MAJOR=$(cut -d'.' -f1 <<< $FIRMWARE)
+FIRMWARE_MAJOR=$(cut -d'.' -f1 <<< $FIRMWARE | sed 's/v//')  # Remove 'v' prefix
 case $FIRMWARE_MAJOR in
   1) FIRMWARE_VERSION="v1";;
   2) FIRMWARE_VERSION="v2";;

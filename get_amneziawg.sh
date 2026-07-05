@@ -119,20 +119,18 @@ BOARD_MODEL=$(
 [ -z "$BOARD_MODEL" ] && die "Unable to get board model."
 info "Board model: $BOARD_MODEL"
 
-# Get board type
+# Get board type (e.g. "e300" for the EdgeRouter 4)
 BOARD_TYPE=$(
-  cut -d'.' -f2 <<< cat /etc/version | \
+  cut -d'.' -f2 /etc/version | \
   sed 's/ER-//I'
 )
 [ -z "$BOARD_TYPE" ] && die "Unable to get board type."
 info "Board type: $BOARD_TYPE"
 
-# Set board mapping to match repo
+# This installer is tailored for the EdgeRouter 4 (e300) ONLY.
 case $BOARD_TYPE in
-  e120)  BOARD_MAP='ugw3';;
-  e220)  BOARD_MAP='ugw4';;
-  e1020) BOARD_MAP='ugwxg';;
-  *)     BOARD_MAP=$BOARD_TYPE;;
+  e300) BOARD_MAP='e300';;
+  *)    die "This installer is tailored for the EdgeRouter 4 (e300) only; detected board type '$BOARD_TYPE'. Use the multi-device amneziawg-vyatta-ubnt build for other models.";;
 esac
 info "Board repo mapping: $BOARD_MAP"
 
@@ -152,8 +150,8 @@ case $FIRMWARE_MAJOR in
 esac
 info "Firmware version category: $FIRMWARE_VERSION"
 
-# Get installed AmneziaWG version
-INSTALLED_VERSION=$(dpkg-query --show --showformat='${Version}' wireguard 2> /dev/null || true)
+# Get installed AmneziaWG version (package was renamed wireguard -> amneziawg)
+INSTALLED_VERSION=$(dpkg-query --show --showformat='${Version}' amneziawg 2> /dev/null || true)
 info "Installed AmneziaWG version: $INSTALLED_VERSION"
 
 # Get list of releases
@@ -209,40 +207,25 @@ VYATTA_SESSION=$(cli-shell-api getSessionEnv $$)
 eval $VYATTA_SESSION
 export vyatta_sbindir=$VYATTA_SBIN #Required for some vyatta-wireguard templates to work
 
-# If AmneziaWG configuration exists
-if $($VYATTA_API existsActive interfaces wireguard); then
+# If an AmneziaWG interface is configured, back it up and remove it before upgrading
+if $($VYATTA_API existsActive interfaces amneziawg); then
   # Backup running configuration
   msg 'Backing up running configuration...'
   $VYATTA_API showConfig --show-active-only > $RUNNING_CONFIG_BACKUP_PATH
 
   # Remove running AmneziaWG configuration
-  vyatta_cfg_setup
-  if dpkg --compare-versions "$INSTALLED_VERSION" 'le' '1.0.20210219-1'; then
-    msg 'Executing configuration remediation...'
-    INTERFACES=( $($VYATTA_API listNodes interfaces wireguard | sed "s/'//g") )
-    for INTERFACE in ${INTERFACES[@]}; do
-      if [ "$($VYATTA_API returnValue interfaces wireguard $INTERFACE route-allowed-ips)" == "true" ]; then
-        $VYATTA_SET interfaces wireguard $INTERFACE route-allowed-ips false
-        $VYATTA_COMMIT
-      fi
-      INTERFACE_ADDRESSES=( $(ip -oneline address show dev $INTERFACE | awk '{print $4}') )
-      for IP in $($VYATTA_API returnValues interfaces wireguard $INTERFACE address | sed "s/'//g"); do
-        [[ ! " ${INTERFACE_ADDRESSES[@]} " =~ " $IP " ]] && ip address add $IP dev $INTERFACE
-      done
-    done
-  fi
   msg 'Removing running AmneziaWG configuration...'
-  $VYATTA_DELETE interfaces wireguard
+  vyatta_cfg_setup
+  $VYATTA_DELETE interfaces amneziawg
   $VYATTA_COMMIT
   vyatta_cfg_teardown
 fi
 
-# If AmneziaWG module is loaded
-if $(lsmod | grep wireguard > /dev/null); then
-  # Remove AmneziaWG module
+# If the AmneziaWG module is loaded, remove it (module is named amneziawg)
+if lsmod | grep -q '^amneziawg'; then
   msg 'Removing AmneziaWG module...'
-  $SUDO modprobe --remove wireguard || \
-    die "A problem occured while removing AmneziaWG mdoule."
+  $SUDO modprobe --remove amneziawg || \
+    die "A problem occured while removing the AmneziaWG module."
 fi
 
 # Install AmneziaWG package
@@ -267,7 +250,7 @@ if [ ! -d $FIRSTBOOT_DIR ]; then
   $SUDO mkdir -p $FIRSTBOOT_DIR &> /dev/null || \
     die "Failure creating '$FIRSTBOOT_DIR' directory."
 fi
-$SUDO mv $DEB_PATH ${FIRSTBOOT_DIR}/wireguard.deb || \
+$SUDO mv $DEB_PATH ${FIRSTBOOT_DIR}/amneziawg.deb || \
   warn "Failure moving debian package to firstboot path."
 
 msg 'AmneziaWG has been successfully installed.'

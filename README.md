@@ -10,17 +10,10 @@ chmod +x get_amneziawg.sh
 ***Note:*** *Best practice is to save scripts into *`/config/scripts`* directory.*
 
 ## Supported Devices
-This script supports the following Ubiquiti devices with automatic firmware version detection:
-- **EdgeRouter X, EdgeRouter X SFP** (e50)
-- **EdgeRouter Lite, EdgeRouter PoE** (e100) 
-- **EdgeRouter 8, EdgeRouter Pro** (e200)
-- **EdgeRouter 4, EdgeRouter 6P, EdgeRouter 12** (e300)
-- **EdgeRouter Infinity** (e1000)
-- **UniFi Security Gateway** (ugw3)
-- **UniFi Security Gateway Pro 4** (ugw4)
-- **UniFi Security Gateway XG 8** (ugwxg)
+This installer is **tailored for the EdgeRouter 4 (e300) only**:
+- **EdgeRouter 4** (e300)
 
-The script automatically detects your EdgeOS version (v1 or v2) and downloads the appropriate package.
+It also covers the other e300-family boards that share the same package (EdgeRouter 6P, EdgeRouter 12). Running it on any other model will abort with a clear message. The script automatically detects your EdgeOS version (v1 or v2) and downloads the matching `e300-v1`/`e300-v2` package. For other devices, use the multi-device build in the [amneziawg-vyatta-ubnt](https://github.com/coffeegrind123/amneziawg-vyatta-ubnt) repository.
 
 ## Usage
 To download and install the latest release of AmneziaWG, run the following command.
@@ -29,7 +22,7 @@ To download and install the latest release of AmneziaWG, run the following comma
 ```
 To download and install a specific release of AmneziaWG, run the following command with the desired release as a parameter.
 ```
-./get_amneziawg.sh v1.0.20241112-1.0.20250706
+./get_amneziawg.sh v1.0.20260329-2-1.0.20260223
 ```
 ## Log
 The script writes a log to `/tmp/get_amneziawg.log`. This log file will be removed after reboot of the device.

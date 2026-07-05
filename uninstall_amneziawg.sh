@@ -80,48 +80,32 @@ VYATTA_SESSION=$(cli-shell-api getSessionEnv $$)
 eval $VYATTA_SESSION
 export vyatta_sbindir=$VYATTA_SBIN
 
-# Get installed AmneziaWG version
-INSTALLED_VERSION=$(dpkg-query --show --showformat='${Version}' wireguard 2> /dev/null || true)
+# Get installed AmneziaWG version (package is named amneziawg)
+INSTALLED_VERSION=$(dpkg-query --show --showformat='${Version}' amneziawg 2> /dev/null || true)
 
-# If AmneziaWG configuration exists
-if $($VYATTA_API existsActive interfaces wireguard); then
-  # Remove running AmneziaWG configuration
-  vyatta_cfg_setup
-  if dpkg --compare-versions "$INSTALLED_VERSION" 'le' '1.0.20210219-1'; then
-    msg 'Executing configuration remediation...'
-    INTERFACES=( $($VYATTA_API listNodes interfaces wireguard | sed "s/'//g") )
-    for INTERFACE in ${INTERFACES[@]}; do
-      if [ "$($VYATTA_API returnValue interfaces wireguard $INTERFACE route-allowed-ips)" == "true" ]; then
-        $VYATTA_SET interfaces wireguard $INTERFACE route-allowed-ips false
-        $VYATTA_COMMIT
-      fi
-      INTERFACE_ADDRESSES=( $(ip -oneline address show dev $INTERFACE | awk '{print $4}') )
-      for IP in $($VYATTA_API returnValues interfaces wireguard $INTERFACE address | sed "s/'//g"); do
-        [[ ! " ${INTERFACE_ADDRESSES[@]} " =~ " $IP " ]] && ip address add $IP dev $INTERFACE
-      done
-    done
-  fi
+# If an AmneziaWG interface is configured, remove it
+if $($VYATTA_API existsActive interfaces amneziawg); then
   msg 'Removing running AmneziaWG configuration...'
-  $VYATTA_DELETE interfaces wireguard
+  vyatta_cfg_setup
+  $VYATTA_DELETE interfaces amneziawg
   $VYATTA_COMMIT
   vyatta_cfg_teardown
 fi
 
-# If AmneziaWG module is loaded
-if $(lsmod | grep wireguard > /dev/null); then
-  # Remove AmneziaWG module
+# If the AmneziaWG module is loaded, remove it
+if lsmod | grep -q '^amneziawg'; then
   msg 'Removing AmneziaWG module...'
-  ${SUDO-} modprobe --remove wireguard || \
+  ${SUDO-} modprobe --remove amneziawg || \
     die "A problem occured while removing AmneziaWG module."
 fi
 
 # Uninstall AmneziaWG package
 msg 'Uninstalling AmneziaWG...'
-${SUDO-} dpkg --purge wireguard &> /dev/null || \
+${SUDO-} dpkg --purge amneziawg &> /dev/null || \
   die "A problem occured while uninstalling the package."
 
 # Remove firstboot package
-FIRSTBOOT_DEB='/config/data/firstboot/install-packages/wireguard.deb'
+FIRSTBOOT_DEB='/config/data/firstboot/install-packages/amneziawg.deb'
 if [ -f $FIRSTBOOT_DEB ]; then
   msg 'Removing AmneziaWG package from firstboot path...'
   ${SUDO-} rm $FIRSTBOOT_DEB || \

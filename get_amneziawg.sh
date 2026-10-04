@@ -99,7 +99,9 @@ OVERRIDE_VERSION=${1:-}
 [[ $EUID -ne 0 ]] && SUDO='sudo'
 SUDO=${SUDO:-}
 TEMP_DIR=$(mktemp -d)
-RUNNING_CONFIG_BACKUP_PATH=${TEMP_DIR}/config.run
+# Kept outside TEMP_DIR so a failed restore never loses the configuration
+BACKUP_DIR=/config/amneziawg-backup
+RUNNING_CONFIG_BACKUP_PATH=${BACKUP_DIR}/config-$(date '+%Y%m%dT%H%M%S').run
 
 # Required when script is executed from vyatta task-scheduler
 for DIR in {,/usr}/sbin; do
@@ -174,12 +176,6 @@ RELEASE_VERSION=$(jq -r "$QUERY .tag_name" <<< $GITHUB_RELEASES)
 [ -z $RELEASE_VERSION ] && die "Invalid release version supplied."
 info "Release version: $RELEASE_VERSION"
 
-# Check if override is not present and release version is newer than installed
-if [ -z $OVERRIDE_VERSION ] && $(dpkg --compare-versions "$RELEASE_VERSION" 'le' "$INSTALLED_VERSION"); then
-  msg "Your installation is up to date."
-  exit 0
-fi
-
 # Get debian package URL - Updated for new naming convention with v1/v2 suffixes
 # Skip UnifiOS packages and filter by board type and firmware version
 DEB_URL=$(jq -r "$QUERY .assets[] | select(.name | contains(\"$BOARD_MAP-$FIRMWARE_VERSION-\")) | select(.name | endswith(\".deb\")) | .browser_download_url" <<< $GITHUB_RELEASES)
@@ -197,6 +193,16 @@ msg 'Checking AmneziaWG package integrity...'
 dpkg-deb --info $DEB_PATH &> /dev/null || \
   die "Debian package integrity check failed for package."
 
+# Release tags (v<module>-<tools>) are not dpkg versions; compare the
+# package's own version instead
+PACKAGE_VERSION=$(dpkg-deb --field $DEB_PATH Version)
+info "Package version: $PACKAGE_VERSION"
+if [ -z $OVERRIDE_VERSION ] && [ -n "$INSTALLED_VERSION" ] && \
+  dpkg --compare-versions "$PACKAGE_VERSION" 'le' "$INSTALLED_VERSION"; then
+  msg "Your installation is up to date."
+  exit 0
+fi
+
 # Setup vyatta environment
 VYATTA_SBIN=/opt/vyatta/sbin
 VYATTA_API=${VYATTA_SBIN}/my_cli_shell_api
@@ -211,7 +217,9 @@ export vyatta_sbindir=$VYATTA_SBIN #Required for some vyatta-wireguard templates
 if $($VYATTA_API existsActive interfaces amneziawg); then
   # Backup running configuration
   msg 'Backing up running configuration...'
+  mkdir -p $BACKUP_DIR
   $VYATTA_API showConfig --show-active-only > $RUNNING_CONFIG_BACKUP_PATH
+  info "Configuration backup: $RUNNING_CONFIG_BACKUP_PATH"
 
   # Remove running AmneziaWG configuration
   msg 'Removing running AmneziaWG configuration...'
@@ -234,12 +242,34 @@ $SUDO dpkg -i $DEB_PATH &> /dev/null || \
   die "A problem occured while installing the package."
 
 # If AmneziaWG was previously configured
+RESTORE_FAILED=
 if [ -f $RUNNING_CONFIG_BACKUP_PATH ]; then
-  # Load backup configuration
+  # AmneziaWG 3.x takes I1-I5 as packet tag strings. Older packages stored
+  # plain numbers there, which the kernel parsed as an empty packet (a no-op)
+  # and which the new templates reject, so drop them before restoring.
+  RESTORE_PATH=${TEMP_DIR}/config.restore
+  awk '
+    /^[[:space:]]*amneziawg awg[0-9]+ \{/ { depth = 1; print; next }
+    depth > 0 && /\{[[:space:]]*$/ { depth++ }
+    depth > 0 && /^[[:space:]]*\}/ { depth-- }
+    depth == 1 && /^[[:space:]]*i[1-5] "?[0-9]+"?[[:space:]]*$/ {
+      sub(/^[[:space:]]+/, ""); print "dropped legacy " $0 > "/dev/stderr"; next
+    }
+    { print }
+  ' $RUNNING_CONFIG_BACKUP_PATH > $RESTORE_PATH 2> ${TEMP_DIR}/dropped
+  while read -r LINE; do
+    warn "AmneziaWG: $LINE (it had no effect)"
+  done < ${TEMP_DIR}/dropped
+
   msg 'Restoring previous running configuration...'
   vyatta_cfg_setup
-  $VYATTA_API loadFile $RUNNING_CONFIG_BACKUP_PATH
-  $VYATTA_COMMIT
+  $VYATTA_API loadFile $RESTORE_PATH
+  # Don't let the ERR trap abort here: the package is already installed
+  # and the backup must stay usable for a manual restore
+  if ! $VYATTA_COMMIT; then
+    RESTORE_FAILED=1
+    $VYATTA_SBIN/my_discard &> /dev/null || true
+  fi
   vyatta_cfg_teardown
 fi
 
@@ -252,5 +282,12 @@ if [ ! -d $FIRSTBOOT_DIR ]; then
 fi
 $SUDO mv $DEB_PATH ${FIRSTBOOT_DIR}/amneziawg.deb || \
   warn "Failure moving debian package to firstboot path."
+
+if [ -n "$RESTORE_FAILED" ]; then
+  warn "AmneziaWG $PACKAGE_VERSION is installed, but restoring the configuration failed."
+  warn "Fix the reported values, then restore with:"
+  warn "  configure; load $RUNNING_CONFIG_BACKUP_PATH; commit; save"
+  exit 1
+fi
 
 msg 'AmneziaWG has been successfully installed.'
